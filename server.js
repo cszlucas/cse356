@@ -6,6 +6,7 @@ const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
+const pool = require("pool");
 const http = require("http");
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -56,7 +57,7 @@ app.use(
 );
 
 let transporter = nodemailer.createTransport({
-  host: "localhost", // Assuming you have a local SMTP server like Postfix running
+  host: "130.245.136.123", // Assuming you have a local SMTP server like Postfix running
   port: 25, // Default SMTP port
   path: "/usr/sbin/sendmail",
   secure: false, // Disable TLS for local server
@@ -72,7 +73,7 @@ function generateKey() {
 }
 
 function sendVerificationEmail(email, key) {
-  const verificationLink = `http://yourdomain.com/verify?email=${encodeURIComponent(email)}&key=${key}`;
+  const verificationLink = `http://yourdomain.com/verify?email=${email}&key=${key}`;
   console.log(verificationLink);
   let mailOptions = {
     from: "cloud.cse356.compas.cs.stonybrook.edu", // Sender address
@@ -81,15 +82,10 @@ function sendVerificationEmail(email, key) {
     text: `Please click the following link to verify your email: ${verificationLink}`,
   };
 
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      return console.log("Error while sending mail: ", error);
-    }
-    console.log("Email sent successfully: ", info.response);
-  });
+    return transporter.sendMail(mailOptions);
 }
 
-app.post("/adduser", async (req, res) => {
+app.post("/api/adduser", async (req, res) => {
   console.log("Request Body:", req.body);
   const { username, password, email } = req.body;
   const encodeEmail = encodeURIComponent(email);
@@ -99,18 +95,28 @@ app.post("/adduser", async (req, res) => {
   console.log("encoded email: ");
   console.log(encodeEmail);
   try {
+
+     const dupName = await db.collection("manage_users")
+      .findOne({username: username})
+      if(dupName){
+         return res.status(200)
+          .json({
+            status:"ERROR",
+            message:"Duplicate user!",
+          })
+      }
+
+      const dupEmail = await db.collection("manage_users")
+      .findOne({email: email})
+      if(dupEmail){
+       return res.status(200)
+          .json({
+            status:"ERROR",
+            message:"Duplicate email!",
+          })
+      }
     // check for duplicate user
 
-    // if (checkResult.rows.length > 0) {
-    //       console.log("duplicate user!");
-    //     return res.status(200).json({
-    //          status: "ERROR",
-    //        error: true,
-    //      message: "Duplicate user!"
-    // });
-
-    // console.log("idk");
-    //  }
 
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -127,46 +133,49 @@ app.post("/adduser", async (req, res) => {
     };
 
     //user,password,email,key
-    db.collection("manage_users")
-      .insertOne(userData)
-      .then((result) => {
-        res
-          .status(200)
+    const inserted = await db.collection("manage_users").insertOne(userData)
+      if(inserted){
+        return res.status(200)
           .json({
-            status: "OK",
-            message: "Added user!",
-          })
-          .catch((error) => {
-            console.error("Error adding user:", error);
-            res.status(500).json({ message: "Internal server error" });
+            status:"OK",
+            message:"Yay, added user!",
           });
-      });
+      }
+     console.log("idk");
   } catch (error) {
     console.error("Error in verify API:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-app.get("/verify", async (req, res) => {
-  console.log("in verify email and key");
-  console.log(req.query);
-  const query = req.query;
-  const { email, key } = req.query;
-  const encodeEmail = encodeURIComponent(email);
+app.get("/api/verify", async (req, res) => {
+  console.log("in VERIFY email and key");
+  console.log(req.body);
+  process.stdout.write('Hello, World!');
+  const { email, key } = req.body;
+  const encodeEmail = encodeURIComponent(email).replace(/%20/g, '+').replace(/%40/g, '@');;
 
   try {
     console.log(encodeEmail);
     console.log(key);
-    const findUser = await db.collection("manage_users").find(query);
-    sendVerificationEmail(encodeEmail, key);
-
-    res.status(200).json({
-      status: "OK",
-      message: "Sent email!",
+    const findUser = await db.collection("manage_users").find(req.body);
+    if(!findUser){
+        return res.status(200).json({
+        status: "ERROR",
+        message: "Cant'find user!",
     });
+    }
+    const info = await sendVerificationEmail(encodeEmail, key);
+    console.log("Email sent successfully:", info.response);
+
+        // Respond to the client after the email has been sent
+        res.status(200).json({
+            status: "OK",
+            message: "Sent email!",
+        });
   } catch (error) {
     console.error("Error sending verification email:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 
