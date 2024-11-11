@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPEG-DASH Media Player</title>
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    <style>
+        /* Simple styles for the player */
+        #videoPlayer {
+            width: 640px;
+            height: 360px;
+            background: black;
+        }
+    </style>
+</head>
+<body>
+    <div id="videoPlayer"></div>
+    <button id="playPauseBtn">Play</button>
+    <input type="range" id="seekBar" value="0" max="100" step="1" />
+    <select id="resolutionSelect"></select>
+
+    <script>
+        const url = 'http://130.245.136.73/mnt2/video/4781506-uhd_4096_2160_25fps.mp4';
+        const player = dashjs.MediaPlayer().create();
+        player.initialize(document.querySelector("#videoPlayer"), url, true);
+
+        const playPauseBtn = document.getElementById("playPauseBtn");
+        const seekBar = document.getElementById("seekBar");
+        const resolutionSelect = document.getElementById("resolutionSelect");
+
+        // Play/Pause functionality
+        playPauseBtn.addEventListener("click", () => {
+            if (player.isPlaying()) {
+                player.pause();
+                playPauseBtn.textContent = "Play";
+            } else {
+                player.play();
+                playPauseBtn.textContent = "Pause";
+            }
+        });
+
+        // Seek functionality
+        seekBar.addEventListener("input", () => {
+            const seekTime = player.duration() * (seekBar.value / 100);
+            player.seekTo(seekTime);
+        });
+
+        // Update the seek bar as the video plays
+        player.on(dashjs.MediaPlayer.events.PLAYBACK_TIME_UPDATED, () => {
+            const currentTime = player.time();
+            const duration = player.duration();
+            seekBar.value = (currentTime / duration) * 100;
+        });
+
+        // Dynamically change resolutions
+        player.on(dashjs.MediaPlayer.events.METRIC_CHANGED, (e) => {
+            if (e.metric === "streamInfo") {
+                resolutionSelect.innerHTML = ''; // Clear previous options
+                e.data.forEach((stream) => {
+                    const option = document.createElement("option");
+                    option.value = stream.id;
+                    option.textContent = `${stream.width}x${stream.height}`;
+                    resolutionSelect.appendChild(option);
+                });
+            }
+        });
+
+        resolutionSelect.addEventListener("change", () => {
+            const selectedStreamId = resolutionSelect.value;
+            player.setQualityFor("video", parseInt(selectedStreamId));
+        });
+    </script>
+</body>
+</html>
